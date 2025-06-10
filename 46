@@ -1,0 +1,247 @@
+### Решение заданий лабораторной работы №46
+
+#### 5.1 Создание слоя доступа к данным
+**5.1.1 Структура решения:**
+```
+Lab46Solution
+├── DatabaseLibrary (Class Library)
+├── DatabaseApp (Windows Forms App)
+```
+
+**5.1.2 Интерфейс и классы:**
+```csharp
+// DatabaseLibrary/IDatabase.cs
+public interface IDatabase
+{
+    int ExecuteQuery(string query);
+    bool UpdateGame(int id, string newName, decimal newPrice);
+    void InsertGame(string name, decimal price, int year);
+}
+```
+
+```csharp
+// DatabaseLibrary/SqlDatabase.cs
+using Microsoft.Data.SqlClient;
+
+public class SqlDatabase : IDatabase
+{
+    private readonly string _connectionString;
+
+    public SqlDatabase(string server, string db, string user, string password)
+    {
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = server,
+            InitialCatalog = db,
+            UserID = user,
+            Password = password,
+            IntegratedSecurity = false
+        };
+        _connectionString = builder.ConnectionString;
+    }
+
+    // Реализация методов будет добавлена ниже
+}
+```
+
+```csharp
+// DatabaseLibrary/SqliteDatabase.cs
+using Microsoft.Data.Sqlite;
+
+public class SqliteDatabase : IDatabase
+{
+    private readonly string _connectionString;
+
+    public SqliteDatabase(string path, string dbName)
+    {
+        var builder = new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.Combine(path, dbName)
+        };
+        _connectionString = builder.ConnectionString;
+    }
+
+    // Реализация методов будет добавлена ниже
+}
+```
+
+**5.1.4 Инициализация в приложении:**
+```csharp
+// DatabaseApp (Form1.cs)
+private readonly IDatabase _database;
+
+public Form1()
+{
+    InitializeComponent();
+    
+    // Для MSSQL
+    _database = new SqlDatabase("localhost", "GameDB", "user", "password");
+    
+    // Для SQLite
+    // _database = new SqliteDatabase(@"C:\Data", "games.db");
+    
+    Debug.WriteLine($"Строка подключения: {_database.GetConnectionString()}");
+}
+```
+
+#### 5.2 Метод ExecuteQuery
+**5.2.1-5.2.2 Реализация методов:**
+```csharp
+// В каждом классе Database
+public int ExecuteQuery(string query)
+{
+    try
+    {
+        using (var connection = new SqlConnection(_connectionString)) // Для Sqlite: SqliteConnection
+        {
+            connection.Open();
+            using (var command = new SqlCommand(query, connection)) // Для Sqlite: SqliteCommand
+            {
+                return command.ExecuteNonQuery();
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        throw new Exception($"Ошибка выполнения запроса: {ex.Message}");
+    }
+}
+```
+
+**5.2.3 Тестирование в приложении:**
+```csharp
+private void btnExecute_Click(object sender, EventArgs e)
+{
+    try
+    {
+        string query = "UPDATE Games SET Price = Price + 1";
+        int rowsAffected = _database.ExecuteQuery(query);
+        MessageBox.Show($"Обновлено строк: {rowsAffected}");
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show(ex.Message);
+    }
+}
+```
+
+#### 5.3 Метод UpdateGame
+**5.3.1-5.3.2 Реализация:**
+```csharp
+public bool UpdateGame(int id, string newName, decimal newPrice)
+{
+    string query = $"UPDATE Games SET Name = '{newName.Replace("'", "''")}', " +
+                   $"Price = {newPrice.ToString(CultureInfo.InvariantCulture)} " +
+                   $"WHERE Id = {id}";
+
+    int rowsAffected = ExecuteQuery(query);
+    return rowsAffected == 1;
+}
+```
+
+**5.3.3 Тестирование:**
+```csharp
+private void btnUpdate_Click(object sender, EventArgs e)
+{
+    try
+    {
+        int id = int.Parse(txtId.Text);
+        string name = txtName.Text;
+        decimal price = decimal.Parse(txtPrice.Text);
+        
+        bool success = _database.UpdateGame(id, name, price);
+        MessageBox.Show(success ? "Запись обновлена!" : "Запись не найдена");
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show(ex.Message);
+    }
+}
+```
+
+#### 5.4 Метод InsertGame
+**5.4.1-5.4.2 Реализация:**
+```csharp
+public void InsertGame(string name, decimal price, int year)
+{
+    using (var connection = new SqlConnection(_connectionString)) // Для Sqlite: SqliteConnection
+    {
+        connection.Open();
+        string query = "INSERT INTO Games (Name, Price, Year) " +
+                       "VALUES (@name, @price, @year)";
+        
+        using (var command = new SqlCommand(query, connection)) // Для Sqlite: SqliteCommand
+        {
+            command.Parameters.AddWithValue("@name", name);
+            command.Parameters.AddWithValue("@price", price);
+            command.Parameters.AddWithValue("@year", year);
+            command.ExecuteNonQuery();
+        }
+    }
+}
+```
+
+**5.4.3 Тестирование:**
+```csharp
+private void btnInsert_Click(object sender, EventArgs e)
+{
+    try
+    {
+        string name = txtName.Text;
+        decimal price = decimal.Parse(txtPrice.Text);
+        int year = int.Parse(txtYear.Text);
+        
+        _database.InsertGame(name, price, year);
+        MessageBox.Show("Игра добавлена!");
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show(ex.Message);
+    }
+}
+```
+
+---
+
+### Контрольные вопросы:
+1. **Как изменить данные с помощью SqlCommand?**  
+   Через SQL-запросы UPDATE/INSERT/DELETE + вызов `ExecuteNonQuery()`.
+
+2. **Как передать параметры в SqlCommand?**  
+   Через коллекцию `Parameters.AddWithValue("@param", value)`.
+
+3. **Для чего используются параметры?**  
+   - Безопасность (защита от SQL-инъекций)  
+   - Типизация данных  
+   - Повторное использование команд
+
+4. **Для чего нужен SqlCommandBuilder?**  
+   Автоматическая генерация команд INSERT/UPDATE/DELETE на основе SELECT-запроса.
+
+5. **Как связать SqlCommandBuilder с SqlDataAdapter?**  
+   ```csharp
+   var adapter = new SqlDataAdapter("SELECT * FROM Table", connection);
+   var builder = new SqlCommandBuilder(adapter);
+   adapter.InsertCommand = builder.GetInsertCommand();
+   ```
+
+---
+
+### Важные замечания:
+1. Для SQLite замените все `SqlConnection` → `SqliteConnection`, `SqlCommand` → `SqliteCommand`
+2. Добавьте обработку ошибок для всех операций с БД
+3. Реализуйте метод получения строки подключения в интерфейсе:
+   ```csharp
+   string GetConnectionString(); // Добавить в IDatabase
+   ```
+4. Для работы с параметрами в SQLite используйте синтаксис `$"@param"` вместо `@param`
+
+Тестовые данные для таблицы Games:
+```sql
+CREATE TABLE Games (
+    Id INT PRIMARY KEY IDENTITY,
+    Name NVARCHAR(100) NOT NULL,
+    Price DECIMAL(10,2) NOT NULL,
+    Year INT
+);
+```
